@@ -14,7 +14,7 @@ DOMAIN = "cocoro_air"
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.SENSOR, Platform.HUMIDIFIER]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
 MIN_TIME_BETWEEN_UPDATES = timedelta(seconds=20)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
