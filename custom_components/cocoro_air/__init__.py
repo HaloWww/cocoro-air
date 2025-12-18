@@ -129,7 +129,7 @@ class CocoroAir:
 
             response_data = self.cache
             try:
-                data = res.json()['objects_aircleaner_021']['body']['data']
+                data = res.json()['sensors_aircleaner_021']['body']['data']
                 for item in data:
                     if 'k1' in item:
                         response_data['k1'] = item['k1']
