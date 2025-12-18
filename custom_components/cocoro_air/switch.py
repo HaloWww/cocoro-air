@@ -1,7 +1,8 @@
 """Humidifier platform for Cocoro Air."""
 import logging
 from datetime import timedelta
-
+from homeassistant.components.switch import SwitchEntity
+from homeassistant.components.switch import SwitchDeviceClass
 from homeassistant.components.humidifier import HumidifierEntity, HumidifierDeviceClass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -26,13 +27,13 @@ async def async_setup_entry(
     ])
 
 
-class CocoroAirHumidifier(HumidifierEntity):
+class CocoroAirHumidifier(SwitchEntity):
     """Representation of a Cocoro Air Humidifier."""
 
     _attr_has_entity_name = True
     _attr_name = "Humidity Mode"
     _attr_icon = "mdi:air-humidifier"
-    _attr_device_class = HumidifierDeviceClass.HUMIDIFIER
+    _attr_device_class = SwitchDeviceClass.SWITCH
     
     def __init__(self, api):
         """Initialize the humidifier."""
