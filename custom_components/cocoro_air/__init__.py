@@ -1,7 +1,8 @@
 """The Cocoro Air integration."""
 import logging
 from datetime import timedelta
-
+import httpx
+from homeassistant.helpers import config_validation, discovery
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -108,7 +109,7 @@ class CocoroAir:
         """Call the API."""
         async with self.client as client:
             res = await client.get(
-                'https://cocoroplusapp.jp.sharp/v1/cocoro-air/objects-conceal/air-cleaner',
+                'https://cocoroplusapp.jp.sharp/v1/cocoro-air/sensors-conceal/air-cleaner',
                 params={
                     'device_id': self.device_id,
                     'event_key': 'echonet_property',
@@ -128,7 +129,7 @@ class CocoroAir:
 
             response_data = self.cache
             try:
-                data = res.json()['objects_aircleaner_020']['body']['data']
+                data = res.json()['objects_aircleaner_021']['body']['data']
                 for item in data:
                     if 'k1' in item:
                         response_data['k1'] = item['k1']
