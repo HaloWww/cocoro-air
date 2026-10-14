@@ -1,79 +1,71 @@
-"""Config flow for Cocoro Air integration."""
+"""Configure or reauthenticate Cocoro Air."""
 from __future__ import annotations
-
-import logging
-from typing import Any
 
 import httpx
 import voluptuous as vol
-
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.httpx_client import create_async_httpx_client
 
-from . import DOMAIN, CocoroAir
+from . import DOMAIN
+from .api import CocoroAir, CocoroAirAuthError, CocoroAirConnectionError, USER_AGENT
 
-_LOGGER = logging.getLogger(__name__)
-
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required("email"): str,
-        vol.Required("password"): str,
-        vol.Required("device_id"): str,
-        vol.Required("model_name", default="KILS50"): str,
-    }
-)
+STEP_USER_DATA_SCHEMA = vol.Schema({
+    vol.Required("email"): str,
+    vol.Required("password"): str,
+    vol.Required("device_id"): str,
+    vol.Required("model_name", default="KILS50"): str,
+})
 
 
-def validate_input(data: dict[str, Any]) -> dict[str, Any]:
-    """Validate the user input allows us to connect."""
-
-    client = httpx.Client()
-    api = CocoroAir(
-        client,
-        data["email"],
-        data["password"],
-        data["device_id"],
-        data["model_name"],
-    )
-
+async def validate_input(hass: HomeAssistant, data):
+    client = create_async_httpx_client(hass, timeout=30, headers={"User-Agent": USER_AGENT})
     try:
-        api.login()
-    except Exception as err:
-        raise InvalidAuth from err
-
-    # Return info to be stored in the config entry.
+        api = CocoroAir(client, data["email"], data["password"], data["device_id"], data["model_name"])
+        await api.login()
+        await api.update()
+    finally:
+        await httpx.AsyncClient.aclose(client)
     return {"title": f"Cocoro Air {data['model_name']} ({data['device_id']})"}
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
-    """Handle a config flow for Cocoro Air."""
-
     VERSION = 1
 
-    async def async_step_user(
-        self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
-        """Handle the initial step."""
-        errors: dict[str, str] = {}
-
+    async def async_step_user(self, user_input=None):
+        errors = {}
         if user_input is not None:
+            if any(entry.data.get("device_id") == user_input["device_id"] for entry in self._async_current_entries()):
+                return self.async_abort(reason="already_configured")
             try:
-                info = await self.hass.async_add_executor_job(
-                    validate_input, user_input
-                )
-                return self.async_create_entry(title=info["title"], data=user_input)
-            except InvalidAuth:
+                info = await validate_input(self.hass, user_input)
+            except CocoroAirAuthError:
                 errors["base"] = "invalid_auth"
-            except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
-                errors["base"] = "unknown"
+            except (httpx.HTTPError, CocoroAirConnectionError):
+                errors["base"] = "cannot_connect"
+            else:
+                await self.async_set_unique_id(user_input["device_id"])
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(title=info["title"], data=user_input)
+        return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
 
-        return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
-        )
+    async def async_step_reauth(self, entry_data):
+        self._reauth_data = dict(entry_data)
+        return await self.async_step_reauth_confirm()
 
-
-class InvalidAuth(HomeAssistantError):
-    """Error to indicate there is invalid auth."""
+    async def async_step_reauth_confirm(self, user_input=None):
+        errors = {}
+        if user_input is not None:
+            data = dict(self._reauth_data, **user_input)
+            try:
+                await validate_input(self.hass, data)
+            except CocoroAirAuthError:
+                errors["base"] = "invalid_auth"
+            except (httpx.HTTPError, CocoroAirConnectionError):
+                errors["base"] = "cannot_connect"
+            else:
+                return self.async_update_reload_and_abort(self._get_reauth_entry(), data=data)
+        return self.async_show_form(step_id="reauth_confirm", data_schema=vol.Schema({
+            vol.Required("email", default=self._reauth_data["email"]): str,
+            vol.Required("password"): str,
+        }), errors=errors)
