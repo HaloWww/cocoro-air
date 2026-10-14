@@ -1,69 +1,63 @@
-"""Humidifier platform for Cocoro Air."""
+"""The existing Cocoro Air humidity mode switch."""
 import logging
-from datetime import timedelta
-from homeassistant.components.switch import SwitchEntity
-from homeassistant.components.switch import SwitchDeviceClass
-from homeassistant.components.humidifier import HumidifierEntity, HumidifierDeviceClass
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
-from homeassistant.util import Throttle
-from homeassistant.config_entries import ConfigEntry
+
+import httpx
+from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
+from homeassistant.exceptions import HomeAssistantError
 
 from . import DOMAIN
+from .api import CocoroAirAuthError, CocoroAirConnectionError
 
 _LOGGER = logging.getLogger(__name__)
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up the Cocoro Air Humidifier platform."""
-    cocoro_air_api = hass.data[DOMAIN][config_entry.entry_id]["cocoro_air_api"]
-    
-    async_add_entities([
-        CocoroAirHumidifier(cocoro_air_api),
-    ])
+
+async def async_setup_entry(hass, config_entry, async_add_entities):
+    api = hass.data[DOMAIN][config_entry.entry_id]["cocoro_air_api"]
+    async_add_entities([CocoroAirHumidifier(api)], True)
 
 
 class CocoroAirHumidifier(SwitchEntity):
-    """Representation of a Cocoro Air Humidifier."""
-
     _attr_has_entity_name = True
     _attr_name = "Humidity Mode"
-    _attr_icon = "mdi:air-humidifier"
     _attr_device_class = SwitchDeviceClass.SWITCH
-    
+
     def __init__(self, api):
-        """Initialize the humidifier."""
         self._api = api
         self._attr_unique_id = f"{api.device_id}_humidity_mode"
         self._attr_device_info = api.device_info
         self._attr_is_on = None
 
     @property
+    def available(self):
+        return self._api.available and self._attr_is_on is not None
+
+    @property
     def icon(self):
-        """Return the icon to use in the frontend."""
-        return "mdi:air-humidifier-off" if not self._attr_is_on else "mdi:air-humidifier"
+        return "mdi:air-humidifier" if self._attr_is_on else "mdi:air-humidifier-off"
 
     async def async_update(self):
-        """Fetch new state data for the sensor."""
         try:
-            raw_data = await self._api.update()
-            data = self._api.get_sensor_data(raw_data)
-            self._attr_is_on = data['humidity_mode']
-        except Exception as e:
-            _LOGGER.warning("Failed to update sensor data: %s", e)
-    
-    async def async_turn_on(self, **kwargs):
-        """Turn the humidifier on."""
-        await self._api.set_humidity_mode('on')
-        self._attr_is_on = True
+            self._attr_is_on = self._api.get_sensor_data(await self._api.update())["humidity_mode"]
+        except CocoroAirAuthError:
+            self._attr_is_on = None
+            if self.registry_entry:
+                entry = self.hass.config_entries.async_get_entry(self.registry_entry.config_entry_id)
+                if entry:
+                    entry.async_start_reauth(self.hass)
+        except (httpx.HTTPError, CocoroAirConnectionError) as err:
+            self._attr_is_on = None
+            _LOGGER.debug("Cocoro Air switch update failed: %s", err)
+
+    async def _async_set_mode(self, mode):
+        try:
+            await self._api.set_humidity_mode(mode)
+        except (httpx.HTTPError, CocoroAirAuthError, CocoroAirConnectionError) as err:
+            raise HomeAssistantError(f"Could not set Cocoro Air humidity mode: {err}") from err
+        self._attr_is_on = mode == "on"
         self.async_write_ha_state()
 
+    async def async_turn_on(self, **kwargs):
+        await self._async_set_mode("on")
+
     async def async_turn_off(self, **kwargs):
-        """Turn the humidifier off."""
-        await self._api.set_humidity_mode('off')
-        self._attr_is_on = False
-        self.async_write_ha_state()
+        await self._async_set_mode("off")

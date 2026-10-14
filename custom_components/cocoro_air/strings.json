@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cocoro Air",
+        "description": "Enter the existing COCORO AIR account and device details. If Sharp requests account confirmation or new terms, complete that step on its website first.",
+        "data": {"email": "Email", "password": "Password", "device_id": "Device ID", "model_name": "Model name"}
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to Cocoro Air",
+        "description": "Sign in to https://cocoroplusapp.jp.sharp/air and complete any account or terms confirmation first, then confirm your credentials here.",
+        "data": {"email": "Email", "password": "Password"}
+      }
+    },
+    "error": {
+      "invalid_auth": "Authentication failed. Check the credentials and complete any account or terms confirmation on the COCORO AIR website.",
+      "cannot_connect": "Cannot reach COCORO AIR or this device. Check connectivity and the device ID."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "reauth_successful": "Reauthentication successful."
+    }
+  }
+}
