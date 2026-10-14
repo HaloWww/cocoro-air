@@ -3,12 +3,10 @@
     "step": {
       "user": {
         "title": "Cocoro Air",
-        "description": "输入COCORO AIR账户和设备信息。如夏普要求账户确认或同意条款，请先在夏普网站完成。",
+        "description": "输入夏普账户邮箱和密码，随后选择自动发现的设备。请先在夏普网站完成任何账户或条款确认。",
         "data": {
           "email": "邮箱",
-          "password": "密码",
-          "device_id": "设备ID",
-          "model_name": "型号"
+          "password": "密码"
         }
       },
       "reauth_confirm": {
@@ -18,15 +16,33 @@
           "email": "邮箱",
           "password": "密码"
         }
+      },
+      "device": {
+        "title": "选择设备",
+        "data": {
+          "device_id": "设备"
+        }
+      },
+      "reconfigure": {
+        "title": "重新配置Cocoro Air",
+        "description": "更新账户信息，保留当前设备及实体。账户中必须包含原设备。",
+        "data": {
+          "email": "邮箱",
+          "password": "密码"
+        }
       }
     },
     "error": {
       "invalid_auth": "认证失败，请检查账户信息并在夏普网站完成账户或条款确认。",
-      "cannot_connect": "无法连接夏普云端或设备，请检查网络和设备ID。"
+      "cannot_connect": "无法连接夏普云端或设备，请检查网络和设备ID。",
+      "no_devices_found": "账户中没有发现设备。",
+      "device_not_found": "账户中未找到原设备，请确认账户和设备绑定。"
     },
     "abort": {
       "already_configured": "设备已经配置。",
-      "reauth_successful": "重新认证成功。"
+      "reauth_successful": "重新认证成功。",
+      "reconfigure_successful": "重新配置成功。",
+      "reauth_unique_id_mismatch": "设备标识不匹配。"
     }
   },
   "entity": {
@@ -131,6 +147,60 @@
       },
       "dustbox_maintenance": {
         "name": "集尘盒需清洁"
+      }
+    },
+    "fan": {
+      "air_purifier": {
+        "name": "空净控制",
+        "state_attributes": {
+          "preset_mode": {
+            "name": "运行模式",
+            "state": {
+              "off": "停止",
+              "settings": "设置",
+              "humidifier_cleaning": "加湿内部清洁",
+              "cleaning_while_stopped": "停机自动清洁",
+              "error_stop": "故障停机",
+              "auto": "自动",
+              "sleep": "睡眠",
+              "pollen": "花粉",
+              "quiet": "静音",
+              "medium": "中档",
+              "strong": "强档",
+              "odor_patrol": "气味巡检",
+              "turbo": "强力",
+              "weak": "弱档",
+              "rapid": "快速",
+              "automatic_cleaning": "自动清洁",
+              "ai_auto": "AI自动",
+              "splash_particle": "飞沫粒子",
+              "powerful_cleaning": "强力吸尘",
+              "powerful_shot": "强力定点",
+              "cleaning_assist": "清洁辅助",
+              "demo": "演示",
+              "special": "特殊",
+              "ai_purifier_cooperation": "AI净化联动",
+              "ai_circulation_cooperation": "AI循环联动",
+              "ai_custom": "AI自定义",
+              "ai_dog_a": "AI犬类模式A",
+              "ai_dog_b": "AI犬类模式B",
+              "ai_cat_a": "AI猫类模式A",
+              "ai_cat_b": "AI猫类模式B",
+              "ai_humidification": "AI加湿"
+            }
+          }
+        }
+      }
+    },
+    "select": {
+      "fan_speed_control": {
+        "name": "风量控制",
+        "state": {
+          "auto": "自动",
+          "quiet": "静音",
+          "medium": "中",
+          "strong": "强"
+        }
       }
     }
   }

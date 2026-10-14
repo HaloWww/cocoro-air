@@ -7,6 +7,7 @@ from homeassistant.exceptions import HomeAssistantError
 
 from . import DOMAIN
 from .api import CocoroAirAuthError, CocoroAirConnectionError
+from .entity import CocoroAirRefreshMixin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     async_add_entities([CocoroAirHumidifier(api)], True)
 
 
-class CocoroAirHumidifier(SwitchEntity):
+class CocoroAirHumidifier(CocoroAirRefreshMixin, SwitchEntity):
     _attr_has_entity_name = True
     _attr_name = "Humidity Mode"
     _attr_device_class = SwitchDeviceClass.SWITCH

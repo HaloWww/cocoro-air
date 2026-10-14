@@ -7,6 +7,7 @@ from homeassistant.helpers.entity import EntityCategory
 
 from . import DOMAIN
 from .api import CocoroAirAuthError, CocoroAirConnectionError
+from .entity import CocoroAirRefreshMixin
 
 _LOGGER = logging.getLogger(__name__)
 DESCRIPTIONS = (
@@ -25,7 +26,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
                         and not (description.key == "humidifier_filter_maintenance" and api.spec.get("hasHumidFunc") is False)], True)
 
 
-class CocoroAirBinarySensor(BinarySensorEntity):
+class CocoroAirBinarySensor(CocoroAirRefreshMixin, BinarySensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, api, description):

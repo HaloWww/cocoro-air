@@ -9,6 +9,7 @@ from homeassistant.helpers.entity import EntityCategory
 from . import DOMAIN
 from .api import CocoroAirAuthError, CocoroAirConnectionError
 from .const import FAN_SPEED_OPTIONS, FILTER_FIELDS, MODE_OPTIONS, PM25_STATUS_OPTIONS
+from .entity import CocoroAirRefreshMixin
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,7 +47,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(entities, True)
 
 
-class CocoroAirSensor(SensorEntity):
+class CocoroAirSensor(CocoroAirRefreshMixin, SensorEntity):
     _attr_has_entity_name = True
 
     def __init__(self, api, key):
@@ -58,6 +59,16 @@ class CocoroAirSensor(SensorEntity):
     @property
     def available(self):
         return self._api.available and self._attr_native_value is not None
+
+    @property
+    def extra_state_attributes(self):
+        if self._key in ("temperature", "humidity"):
+            attributes = {"measurement_status": self._api.get_sensor_data()[f"{self._key}_status"]}
+            if self._key == "humidity":
+                low, high = (24, 76) if self._api.spec.get("seriiesCode", 0) >= 6 else (6, 100)
+                attributes.update(lower_limit=low, upper_limit=high)
+            return attributes
+        return None
 
     async def async_update(self):
         try:

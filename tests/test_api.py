@@ -229,6 +229,72 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
         cache['k3'] = {'s1':'20','s10':'81'}
         self.assertEqual(api.get_sensor_data(cache)['operation_mode'],'ai_dog_a')
 
+    async def test_business_401_renews_session_and_zero_code_succeeds(self):
+        count = 0
+        def handler(request):
+            nonlocal count
+            count += 1
+            return httpx.Response(200,json={'result':{'status':401}}) if count == 1 else httpx.Response(200,json={'result':{'status':200,'body':{'code':0}}})
+        api = self.api(self.client(handler))
+        calls = []
+        async def login(): calls.append(True)
+        api.login = login
+        await api._request('GET','/test')
+        self.assertEqual(count,2)
+        self.assertEqual(len(calls),1)
+
+    async def test_business_errors_are_rejected_without_mutating_cache(self):
+        for payload in ({'status':400}, {'result':{'status':200,'body':{'code':400}}},
+                        {'result':{'status':'invalid'}}, {}, []):
+            api = self.api(self.client(lambda r:httpx.Response(200,json=payload)))
+            api.cache = {'k3':{'s7':'00'}}
+            with self.assertRaises(module.CocoroAirConnectionError):
+                await api.set_humidity_mode('on')
+            self.assertFalse(api.get_sensor_data()['humidity_mode'])
+
+    async def test_discovery_uses_cloud_model_and_label(self):
+        payload = {'devices':{'body':{'devices':[{'device_id':'device','device_name':'Cleaner','model_name':'KIPX100','place':'Room'}]}}}
+        api = self.api(self.client(lambda r:httpx.Response(200,json=payload)))
+        rows = await api.async_query_devices()
+        self.assertEqual(rows,[{'device_id':'device','model_name':'KIPX100','label':'Cleaner (KIPX100) - Room'}])
+        api = self.api(self.client(lambda r:httpx.Response(200,json={'devices':{'body':{'devices':None}}})))
+        with self.assertRaises(module.CocoroAirConnectionError): await api.async_query_devices()
+
+    async def test_serialized_mode_command_readback_uses_model_capabilities(self):
+        mode = '30'
+        commands = []
+        def handler(request):
+            nonlocal mode
+            if request.method == 'GET':
+                return httpx.Response(200,json={'sensors_aircleaner_021':{'body':{'data':[
+                    {'k1':{'s1':'19','s2':'30'}},{'k3':{'s1':mode,'s2':'00','s10':'00'}},{'0x80':'0x30'}]}}})
+            import json
+            command = json.loads(request.content)
+            commands.append(command)
+            mode = command['data'][0]['odt']['s1']
+            return httpx.Response(200,json={'sync':{'status':200,'body':{'code':0}}})
+        api = self.api(self.client(handler))
+        api.spec={'seriiesCode':6,'hasCloudService':True,'hasHumidFunc':True,'hasSplashParticle':True}
+        await api.async_control('mode','quiet')
+        self.assertEqual(api.get_sensor_data()['operation_mode'],'quiet')
+        self.assertTrue(commands[0]['additional_request'])
+        self.assertEqual(commands[0]['data'],[{'opc':'k3','odt':{'s1':'14','s5':'00'}}])
+        await api.async_control('mode','splash_particle')
+        self.assertEqual(api.get_sensor_data()['operation_mode'],'splash_particle')
+        with self.assertRaises(ValueError): await api.async_control('mode','demo')
+
+    async def test_stopped_and_range_markers_are_not_current_measurements(self):
+        api = self.api(self.client(lambda r:httpx.Response(200)))
+        api.spec={'seriiesCode':6}
+        stopped=api.get_sensor_data({'k1':{'s1':'19','s2':'30'},'k3':{'s1':'00'}})
+        self.assertIsNone(stopped['temperature'])
+        self.assertIsNone(stopped['humidity'])
+        self.assertEqual(stopped['humidity_status'],'not_measuring')
+        limited=api.get_sensor_data({'k1':{'s1':'80','s2':'18'},'k3':{'s1':'30'}})
+        self.assertIsNone(limited['temperature'])
+        self.assertIsNone(limited['humidity'])
+        self.assertEqual(limited['humidity_status'],'below_range')
+
 
 if __name__ == "__main__":
     unittest.main()

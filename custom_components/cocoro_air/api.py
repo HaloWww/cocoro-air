@@ -10,6 +10,7 @@ import time
 import httpx
 
 from .const import AI_MODES, FILTER_FIELDS, OPERATION_MODES
+from .control import build_command, supported_modes
 
 BASE = "https://cocoroplusapp.jp.sharp"
 AUTH = "https://auth.cocoromembers.jp.sharp"
@@ -72,7 +73,8 @@ class CocoroAir:
                 raise ValueError("Unexpected authentication host")
         except (ValueError, KeyError) as err:
             raise CocoroAirConnectionError("Invalid login redirect") from err
-        response = await self.client.get(redirect, follow_redirects=True)
+        html_headers = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+        response = await self.client.get(redirect, follow_redirects=True, headers=html_headers)
         if response.url.host == "cocoroplusapp.jp.sharp" and response.url.path.startswith("/air"):
             response.raise_for_status()
             return
@@ -84,7 +86,7 @@ class CocoroAir:
             data={"state": state, "username": self.email, "captcha": "",
                   "js-available": "true", "webauthn-available": "false",
                   "is-brave": "false", "webauthn-platform-available": "false", "action": "default"},
-            follow_redirects=True,
+            follow_redirects=True, headers=html_headers,
         )
         if response.url.host != "auth.cocoromembers.jp.sharp" or response.url.path != "/u/login/password":
             raise CocoroAirAuthError("Account identification failed; check the email or sign in in a browser")
@@ -92,7 +94,7 @@ class CocoroAir:
         response = await self.client.post(
             f"{AUTH}/u/login/password", params={"state": state},
             data={"state": state, "username": self.email, "password": self.password, "action": "default"},
-            follow_redirects=True,
+            follow_redirects=True, headers=html_headers,
         )
         if response.url.path.startswith("/u/custom-prompt/"):
             raise CocoroAirAuthError("Sign in to COCORO AIR in a browser and complete the account/terms confirmation, then reload this integration")
@@ -102,17 +104,109 @@ class CocoroAir:
 
     async def _request(self, method, path, **kwargs):
         """Retry once after reauthentication, outside the poll throttle."""
-        response = await self.client.request(method, f"{BASE}{path}", **kwargs)
-        if response.status_code == 401:
-            await self.login()
+        for attempt in range(2):
             response = await self.client.request(method, f"{BASE}{path}", **kwargs)
             if response.status_code == 401:
-                raise CocoroAirAuthError("COCORO AIR rejected the renewed session")
-        response.raise_for_status()
-        try:
-            return response.json()
-        except ValueError as err:
-            raise CocoroAirConnectionError("COCORO AIR returned a non-JSON response") from err
+                if attempt:
+                    raise CocoroAirAuthError("COCORO AIR rejected the renewed session")
+                await self.login()
+                continue
+            response.raise_for_status()
+            try:
+                payload = response.json()
+            except ValueError as err:
+                raise CocoroAirConnectionError("COCORO AIR returned a non-JSON response") from err
+            if not isinstance(payload, dict) or not payload:
+                raise CocoroAirConnectionError("Invalid cloud response envelope")
+            statuses = self._response_statuses(payload)
+            if 401 in statuses:
+                if attempt:
+                    raise CocoroAirAuthError("COCORO AIR rejected the renewed session")
+                await self.login()
+                continue
+            if any(status < 200 or status >= 300 for status in statuses):
+                rejected = sorted({status for status in statuses if status < 200 or status >= 300})
+                raise CocoroAirConnectionError(f"Cloud request rejected (status {','.join(map(str, rejected))})")
+            return payload
+        raise CocoroAirAuthError("COCORO AIR rejected the renewed session")
+
+    @staticmethod
+    def _response_statuses(payload):
+        """Inspect HTTP-200 business errors, adapted from original b31e216."""
+        statuses = []
+        for block in [payload, *(value for value in payload.values() if isinstance(value, dict))]:
+            try:
+                if "status" in block:
+                    statuses.append(int(block["status"]))
+                if isinstance(block.get("body"), dict) and "code" in block["body"]:
+                    code = int(block["body"]["code"])
+                    statuses.append(200 if code == 0 else code)
+            except (ValueError, TypeError) as err:
+                raise CocoroAirConnectionError("Invalid cloud response status") from err
+        return statuses
+
+    async def async_query_devices(self):
+        """Discover devices without persisting unrelated account metadata."""
+        payload = await self._request("GET", "/v1/cocoro-air/deviceinfos")
+        devices = []
+        found = False
+        for block in payload.values():
+            if not isinstance(block, dict) or not isinstance(block.get("body"), dict) or "devices" not in block["body"]:
+                continue
+            found = True
+            rows = block["body"]["devices"]
+            if not isinstance(rows, list):
+                raise CocoroAirConnectionError("Invalid device discovery response")
+            for item in rows:
+                if not isinstance(item, dict) or not item.get("device_id") or not item.get("model_name"):
+                    raise CocoroAirConnectionError("Invalid device discovery response")
+                name = item.get("device_name") or item["model_name"]
+                place = item.get("place")
+                devices.append({"device_id": item["device_id"], "model_name": item["model_name"],
+                                "label": f"{name} ({item['model_name']})" + (f" - {place}" if place else "")})
+        if not found:
+            raise CocoroAirConnectionError("Device discovery response is missing devices")
+        return devices
+
+    @property
+    def control_status(self):
+        """Translate legacy read-only names to the upstream command builder."""
+        mode = self.get_sensor_data()["operation_mode"]
+        aliases = {"splash_particle": "splash", "powerful_cleaning": "feel", "error_stop": "error",
+                   "cleaning_while_stopped": "cleaning_stopped", "automatic_cleaning": "cleaning",
+                   "ai_dog_a": "dog", "ai_dog_b": "dog", "ai_cat_a": "cat", "ai_cat_b": "cat",
+                   "ai_humidification": "ai_humidity_measurement"}
+        cloud = self.cache.get("k3", {}).get("s2")
+        return {"current_mode": aliases.get(mode, mode),
+                "cloud_enabled": bool(int(cloud, 16) & 0x80) if cloud and self.spec.get("hasCloudService") else False}
+
+    @property
+    def control_modes(self):
+        aliases = {"splash": "splash_particle", "feel": "powerful_cleaning"}
+        return [aliases.get(mode, mode) for mode in supported_modes({**self.spec, "model_name": self.model_name})]
+
+    async def async_control(self, action, value):
+        """Serialize status, supported command and actual device readback."""
+        if not self.spec:
+            raise CocoroAirConnectionError("Device capabilities are unavailable; reload the integration")
+        if action == "mode":
+            if value not in self.control_modes:
+                raise ValueError("Mode is not supported by this device")
+            value = {"splash_particle": "splash", "powerful_cleaning": "feel"}.get(value, value)
+        async with self._lock:
+            await self._async_update_locked(force=True)
+            if self.control_status["current_mode"] is None:
+                raise CocoroAirConnectionError("Device operating state is unavailable")
+            commands = build_command(action, value, self.control_status, {**self.spec, "model_name": self.model_name})
+            payload = await self._request("POST", "/v1/cocoro-air/sync/air-cleaner", json={
+                "additional_request": int(self.spec.get("seriiesCode", 0)) >= 6,
+                "deviceToken": self.device_id, "event_key": "echonet_control", "data": commands,
+                "model_name": self.model_name})
+            if not self._response_statuses(payload):
+                raise CocoroAirConnectionError("Cloud response did not confirm the control request")
+            self._last_attempt = None
+            await self._async_update_locked(force=True)
+            return True
 
     async def async_load_metadata(self):
         """Read model capabilities and consumable settings, not controls."""
@@ -141,40 +235,44 @@ class CocoroAir:
     async def update(self, *, force=False):
         """Coalesce entity polling and mark failed data unavailable."""
         async with self._lock:
-            if not force and self._last_attempt is not None and time.monotonic() - self._last_attempt < 20:
-                if self._last_error is not None:
-                    raise self._last_error
-                return self.cache
+            return await self._async_update_locked(force=force)
+
+    async def _async_update_locked(self, *, force=False):
+        """Poll while holding the device lock (also used for control readback)."""
+        if not force and self._last_attempt is not None and time.monotonic() - self._last_attempt < 20:
+            if self._last_error is not None:
+                raise self._last_error
+            return self.cache
+        try:
+            if self._last_metadata_attempt is not None and time.monotonic() - self._last_metadata_attempt > 3600:
+                await self.async_load_metadata()
+            payload = await self._request("GET", "/v1/cocoro-air/sensors-conceal/air-cleaner", params={
+                "device_id": self.device_id, "event_key": "echonet_property", "opc": "k1+k2+k3",
+                "epc": "0x80+0xA0+0x86"})
             try:
-                if self._last_metadata_attempt is not None and time.monotonic() - self._last_metadata_attempt > 3600:
-                    await self.async_load_metadata()
-                payload = await self._request("GET", "/v1/cocoro-air/sensors-conceal/air-cleaner", params={
-                    "device_id": self.device_id, "event_key": "echonet_property", "opc": "k1+k2+k3",
-                    "epc": "0x80+0xA0+0x86"})
-                try:
-                    block = payload["sensors_aircleaner_021"]
-                    if block.get("status", 200) != 200:
-                        raise ValueError("Device unreachable")
-                    data = block["body"]["data"]
-                    if not isinstance(data, list):
-                        raise ValueError("Invalid sensor data")
-                    cache = {key: item[key] for item in data for key in ("k1", "k2", "k3", "0x80", "0xA0", "0x86") if key in item}
-                    if not any(key in cache for key in ("k1", "k2", "k3")) or any(
-                            not isinstance(cache[key], dict) for key in ("k1", "k2", "k3") if key in cache):
-                        raise ValueError("Empty sensor data")
-                    self.get_sensor_data(cache)
-                except (KeyError, TypeError, ValueError) as err:
-                    raise CocoroAirConnectionError("Device is unreachable or sensor data is invalid") from err
-                self.cache = cache
-                self.available = True
-                self._last_error = None
-                return self.cache
-            except (httpx.HTTPError, CocoroAirAuthError, CocoroAirConnectionError) as err:
-                self.available = False
-                self._last_error = err
-                raise
-            finally:
-                self._last_attempt = time.monotonic()
+                block = payload["sensors_aircleaner_021"]
+                if block.get("status", 200) != 200:
+                    raise ValueError("Device unreachable")
+                data = block["body"]["data"]
+                if not isinstance(data, list):
+                    raise ValueError("Invalid sensor data")
+                cache = {key: item[key] for item in data for key in ("k1", "k2", "k3", "0x80", "0xA0", "0x86") if key in item}
+                if not any(key in cache for key in ("k1", "k2", "k3")) or any(
+                        not isinstance(cache[key], dict) for key in ("k1", "k2", "k3") if key in cache):
+                    raise ValueError("Empty sensor data")
+                self.get_sensor_data(cache)
+            except (KeyError, TypeError, ValueError) as err:
+                raise CocoroAirConnectionError("Device is unreachable or sensor data is invalid") from err
+            self.cache = cache
+            self.available = True
+            self._last_error = None
+            return self.cache
+        except (httpx.HTTPError, CocoroAirAuthError, CocoroAirConnectionError) as err:
+            self.available = False
+            self._last_error = err
+            raise
+        finally:
+            self._last_attempt = time.monotonic()
 
     def get_sensor_data(self, data=None):
         data = self.cache if data is None else data
@@ -191,7 +289,16 @@ class CocoroAir:
         stopped = mode is not None and ((mode & 0xF0) == 0 or mode == 0x1E)
         power = data.get("0x80")
         power = int(power, 16) if power else None
-        result["running"] = power == 0x30 if power in (0x30, 0x31) else None
+        result["running"] = True if mode in (0x0E, 0x1E) else power == 0x30 if power in (0x30, 0x31) else None
+        # Upstream parse_status and the vendor UI hide measurements while stopped.
+        temperature = result["temperature"]
+        temperature_status = "not_measuring" if stopped else "unknown" if temperature is None else "below_range" if temperature >= 128 else "above_range" if temperature >= 51 else "measured"
+        humidity = result["humidity"]
+        humidity_low, humidity_high = (24, 76) if self.spec.get("seriiesCode", 0) >= 6 else (6, 100)
+        humidity_status = "not_measuring" if stopped else "unknown" if humidity is None else "below_range" if humidity <= humidity_low else "above_range" if humidity >= humidity_high else "measured"
+        result.update(temperature=temperature if temperature_status == "measured" else None,
+                      humidity=humidity if humidity_status == "measured" else None,
+                      temperature_status=temperature_status, humidity_status=humidity_status)
         fan = data.get("0xA0")
         fan = int(fan, 16) if fan else None
         result["fan_speed"] = "auto" if fan == 0x41 else f"level_{fan - 0x30}" if fan is not None and 0x31 <= fan <= 0x38 else None
@@ -240,12 +347,9 @@ class CocoroAir:
         value = "FF" if mode == "on" else "00"
         async with self._lock:
             payload = await self._request("POST", "/v1/cocoro-air/sync/air-cleaner", json={
-                "additional_request": False, "deviceToken": self.device_id, "event_key": "echonet_control",
+                "additional_request": int(self.spec.get("seriiesCode", 0)) >= 6,
+                "deviceToken": self.device_id, "event_key": "echonet_control",
                 "data": [{"opc": "k3", "odt": {"s5": "00", "s7": value}}], "model_name": self.model_name})
-            for block in payload.values() if isinstance(payload, dict) else []:
-                if isinstance(block, dict):
-                    if block.get("status", 200) != 200 or block.get("body", {}).get("code", 200) != 200:
-                        raise CocoroAirConnectionError("Device rejected the humidity command")
             self.cache.setdefault("k3", {})["s7"] = value
             self._last_attempt = None
             return True

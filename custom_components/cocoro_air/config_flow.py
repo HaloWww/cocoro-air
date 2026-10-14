@@ -1,4 +1,4 @@
-"""Configure or reauthenticate Cocoro Air."""
+"""Configure, discover and update one Cocoro Air device per entry."""
 from __future__ import annotations
 
 import httpx
@@ -10,16 +10,25 @@ from homeassistant.helpers.httpx_client import create_async_httpx_client
 from . import DOMAIN
 from .api import CocoroAir, CocoroAirAuthError, CocoroAirConnectionError, USER_AGENT
 
-STEP_USER_DATA_SCHEMA = vol.Schema({
-    vol.Required("email"): str,
-    vol.Required("password"): str,
-    vol.Required("device_id"): str,
-    vol.Required("model_name", default="KILS50"): str,
-})
+CREDENTIAL_SCHEMA = vol.Schema({vol.Required("email"): str, vol.Required("password"): str})
+
+
+def _client(hass):
+    return create_async_httpx_client(hass, auto_cleanup=False, timeout=30, headers={"User-Agent": USER_AGENT})
+
+
+async def discover_devices(hass: HomeAssistant, credentials):
+    client = _client(hass)
+    try:
+        api = CocoroAir(client, credentials["email"], credentials["password"], None, None)
+        await api.login()
+        return await api.async_query_devices()
+    finally:
+        await httpx.AsyncClient.aclose(client)
 
 
 async def validate_input(hass: HomeAssistant, data):
-    client = create_async_httpx_client(hass, timeout=30, headers={"User-Agent": USER_AGENT})
+    client = _client(hass)
     try:
         api = CocoroAir(client, data["email"], data["password"], data["device_id"], data["model_name"])
         await api.login()
@@ -35,37 +44,79 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         errors = {}
         if user_input is not None:
-            if any(entry.data.get("device_id") == user_input["device_id"] for entry in self._async_current_entries()):
-                return self.async_abort(reason="already_configured")
             try:
-                info = await validate_input(self.hass, user_input)
+                devices = await discover_devices(self.hass, user_input)
             except CocoroAirAuthError:
                 errors["base"] = "invalid_auth"
             except (httpx.HTTPError, CocoroAirConnectionError):
                 errors["base"] = "cannot_connect"
             else:
-                await self.async_set_unique_id(user_input["device_id"])
-                self._abort_if_unique_id_configured()
-                return self.async_create_entry(title=info["title"], data=user_input)
-        return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors)
+                if devices:
+                    self._credentials = {key: user_input[key] for key in ("email", "password")}
+                    self._devices = devices
+                    return await self.async_step_device()
+                errors["base"] = "no_devices_found"
+        return self.async_show_form(step_id="user", data_schema=CREDENTIAL_SCHEMA, errors=errors)
+
+    async def async_step_device(self, user_input=None):
+        errors = {}
+        choices = {device["device_id"]: device["label"] for device in self._devices}
+        if user_input is not None:
+            device = next((d for d in self._devices if d["device_id"] == user_input["device_id"]), None)
+            if device is None:
+                errors["base"] = "device_not_found"
+            elif any(entry.data.get("device_id") == device["device_id"] for entry in self._async_current_entries()):
+                return self.async_abort(reason="already_configured")
+            else:
+                data = dict(self._credentials, device_id=device["device_id"], model_name=device["model_name"])
+                try:
+                    info = await validate_input(self.hass, data)
+                except CocoroAirAuthError:
+                    errors["base"] = "invalid_auth"
+                except (httpx.HTTPError, CocoroAirConnectionError):
+                    errors["base"] = "cannot_connect"
+                else:
+                    await self.async_set_unique_id(data["device_id"])
+                    self._abort_if_unique_id_configured()
+                    return self.async_create_entry(title=info["title"], data=data)
+        return self.async_show_form(step_id="device", data_schema=vol.Schema({
+            vol.Required("device_id"): vol.In(choices)}), errors=errors)
 
     async def async_step_reauth(self, entry_data):
         self._reauth_data = dict(entry_data)
         return await self.async_step_reauth_confirm()
 
-    async def async_step_reauth_confirm(self, user_input=None):
+    async def _async_update_credentials(self, entry, user_input):
+        devices = await discover_devices(self.hass, user_input)
+        device = next((d for d in devices if d["device_id"] == entry.data["device_id"]), None)
+        if device is None:
+            return "device_not_found"
+        data = dict(entry.data, email=user_input["email"], password=user_input["password"], model_name=device["model_name"])
+        await validate_input(self.hass, data)
+        return data
+
+    async def _async_credentials_form(self, entry, step_id, user_input):
         errors = {}
         if user_input is not None:
-            data = dict(self._reauth_data, **user_input)
             try:
-                await validate_input(self.hass, data)
+                result = await self._async_update_credentials(entry, user_input)
             except CocoroAirAuthError:
                 errors["base"] = "invalid_auth"
             except (httpx.HTTPError, CocoroAirConnectionError):
                 errors["base"] = "cannot_connect"
             else:
-                return self.async_update_reload_and_abort(self._get_reauth_entry(), data=data)
-        return self.async_show_form(step_id="reauth_confirm", data_schema=vol.Schema({
-            vol.Required("email", default=self._reauth_data["email"]): str,
+                if isinstance(result, str):
+                    errors["base"] = result
+                else:
+                    # Preserve device_id and existing entities, rather than rebinding automations.
+                    return self.async_update_reload_and_abort(entry, data=result, unique_id=entry.data["device_id"])
+        return self.async_show_form(step_id=step_id, data_schema=vol.Schema({
+            vol.Required("email", default=entry.data["email"]): str,
             vol.Required("password"): str,
         }), errors=errors)
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        return await self._async_credentials_form(self._get_reauth_entry(), "reauth_confirm", user_input)
+
+    async def async_step_reconfigure(self, user_input=None):
+        return await self._async_credentials_form(self._get_reconfigure_entry(), "reconfigure", user_input)

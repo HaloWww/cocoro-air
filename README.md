@@ -1,70 +1,103 @@
-# cocoro-air
+# Cocoro Air：夏普空气净化器 Home Assistant 集成
 
-https://cocoroplusapp.jp.sharp/air
+通过夏普 [COCORO AIR 云端](https://cocoroplusapp.jp.sharp/air)读取设备状态，并控制电源、运行模式、风量预设和加湿。本仓库是面向现有 HA 配置维护的分支，版本 **1.0.3**。
 
-## Supported features
+## 支持的功能
 
-- [x] Air Cleaner
-    - [x] Temperature Sensor
-    - [x] Humidity Sensor
-    - [x] Humidifier Mode
-    - [x] Fan speed setting (auto or ECHONET levels 1–8, read-only)
-    - [x] Operation mode and running status (read-only)
-    - [x] PM2.5 concentration and measurement status
-    - [x] Odor, dust and air pollution levels
-    - [x] Estimated remaining life of dust, deodorizing and humidifier filters, Ag cartridge and PCI unit
-    - [x] Operating hours, humidifier filter and dust box maintenance flags
+| 功能 | 说明 |
+| --- | --- |
+| 电源和运行模式 | 空净控制实体支持开关机和按型号提供的运行预设 |
+| 风量控制 | 选择自动、静音、中、强；通过夏普运行模式调整 |
+| 加湿 | 保留原有加湿开关，供已有自动化继续使用 |
+| 温度、湿度 | 读取当前测量；停机和超出量程时不把旧值或标记值当作有效测量 |
+| 空气质量 | PM2.5及测量状态、气味等级、灰尘等级、空气污染等级 |
+| 耗材 | 集尘、除臭、加湿滤网、Ag离子滤芯和PCI离子发生器的估算剩余比例 |
+| 运行和维护 | 累计运行时长、运行状态、加湿滤网和集尘盒清洁提示 |
+| 配置 | 登录后自动发现设备，支持重新认证和更新账户信息 |
 
-You can use [echonetlite](https://github.com/scottyphillips/echonetlite_homeassistant) for additional controls. The humidity switch remains this integration's only control; new entities report information without changing the device.
+KI-PX100 的运行模式包括 AI自动、自动、花粉、睡眠、强力吸尘、飞沫粒子、静音、中、强。其他型号根据云端能力信息筛选选项。内部清洁、故障、演示等状态只读，不作为可选模式；设备停机或清洁中时，模式控制可能不可用，请先通过空净实体开机。
 
-Extra readings are decoded using Sharp's published [COCORO AIR Web application](https://cocoroplusapp.jp.sharp/air). They are enabled according to the device's reported capabilities. Version 1.0.2 was verified on KI-PX100; other models may expose fewer fields.
+**风量控制与运行模式有关联。** 选择静音、中、强会切换到对应运行模式，退出当前特殊模式；选择自动会切换到AI自动，型号不支持时使用普通自动。没有独立的连续0–100%风量控制，也没有实际转速/RPM测量。原有风量传感器仍显示云端返回的ECHONET档位，这与风量控制选择器是两个用途不同的实体。
 
-The fan sensor reports the configured ECHONET airflow level, not measured RPM or air velocity. A level does not imply a percentage or a specific physical flow rate. Odor (0–3), dust (0–4) and air pollution (0–4) are Sharp's ordinal levels, where 0 is cleanest; they are not standard AQI values.
+气味等级范围为0–3，灰尘和空气污染等级为0–4，0代表最干净。这些是夏普定义的等级，并非标准AQI。耗材比例使用实际型号的寿命、使用计数和账户耗材倍率，属于厂商估算值。
 
-PM2.5 uses the low 10 bits of `k1.s7`; its measuring flag and out-of-range values are reported by a separate status sensor rather than as valid numeric concentrations. Filter percentages use the model lifetime, current usage, and account supplies multiplier, matching the vendor's calculation. Capability and supplies metadata refreshes hourly. No CO2 or particle-count entity is created for KI-PX100 because its specification reports those sensors as absent.
+## 安装
 
-## Installation
+1. 在 HACS 的“自定义仓库”中添加 `https://github.com/HaloWww/cocoro-air`，类别选择“集成”。
+2. 下载 Cocoro Air 并重启 Home Assistant。
+3. 前往“设置 → 设备与服务 → 添加集成”，搜索 **Cocoro Air**。
 
-### Install via HACS Custom repositories
+也可以将仓库中的 `custom_components/cocoro_air` 复制到 HA 的 `/config/custom_components/cocoro_air`，然后重启 HA。手动替换 Python 文件后仅重新加载集成不足以载入新代码，需要重启。
 
-https://hacs.xyz/docs/faq/custom_repositories
+## 配置
 
-## Configuration
+1. 先在 [COCORO AIR 网站](https://cocoroplusapp.jp.sharp/air)确认账户可以登录，设备已绑定且在线。
+2. 在 HA 输入夏普账户邮箱和密码。
+3. 从自动发现的设备列表中选择净化器，无需手动获取设备ID或填写型号。
+4. 添加后，在设备页查看传感器、空净控制实体、风量选择器和加湿开关。
 
-1. Go to https://cocoroplusapp.jp.sharp/air and sign in/up
-2. Get `device_id` and model name from devtools
-3. Go to integrations and search for "Cocoro Air"
-4. Input your email, password, device_id and model name
+一个配置条目对应一个设备；添加其他设备时再次添加集成。每个条目使用独立的HTTP会话和cookies，支持账户隔离。
 
-## Model supported
-Model that I have tested:
-- KILS50
-- KIPX100 (live validation of extra readings)
+如需更新邮箱或密码，使用集成菜单中的“重新配置”。更新时验证原设备仍存在，保留设备ID和原实体，不将已有自动化悄悄绑定到另一台机器。要更换设备，请新增对应设备的集成条目。
 
-## Authentication and recovery
+## 自动化示例
 
-Version 1.0.1 supports Sharp's Auth0 login flow. Each integration entry uses
-its own persistent HTTP cookie session. Expired sessions are renewed and the
-failed request is retried once. Polling errors mark entities unavailable rather
-than displaying old measurements as current readings.
+以下实体ID以KI-PX100为例，实际名称请在设备页确认。
 
-If authentication requests account confirmation or acceptance of updated terms,
-sign in to [COCORO AIR](https://cocoroplusapp.jp.sharp/air) in a browser and complete
-that step yourself. Then reload the integration or follow its reauthentication
-prompt. The integration never accepts account terms automatically.
+切换到静音：
 
-Existing temperature, humidity, water tank and humidity mode entity IDs are
-preserved. The water tank remains an `on`/`off` enum sensor for compatibility with
-existing dashboards. The humidity mode remains a switch.
+```yaml
+action: fan.set_preset_mode
+target:
+  entity_id: fan.cocoro_air_kipx100_air_purifier
+data:
+  preset_mode: quiet
+```
 
-After replacing the integration files manually, restart Home Assistant to load
-the new Python modules.
+选择中档风量：
 
-## Development checks
+```yaml
+action: select.select_option
+target:
+  entity_id: select.cocoro_air_kipx100_fan_speed_control
+data:
+  option: medium
+```
 
-Install `httpx`, then run:
+英文参数是服务使用的内部值，HA界面提供中文名称。其他常见运行参数：`ai_auto`、`auto`、`pollen`、`sleep`、`powerful_cleaning`、`splash_particle`、`quiet`、`medium`、`strong`。旧的 `switch.cocoro_air_kipx100_humidity_mode` 继续用于加湿自动化。
+
+## 登录、断线和量程处理
+
+集成使用夏普当前的Auth0登录流程，会话过期后重新登录并将失败请求重试一次。轮询和控制按设备串行执行，控制后读回实际状态，并刷新其他相关实体；云端拒绝请求时不会伪装成控制成功。
+
+如果夏普要求账户确认或接受新版条款，请先在夏普网站自行完成，然后在HA重新认证或重新加载集成。集成不会自动接受账户条款。
+
+设备离线、停机无法测量、测量中或超出量程时，相应数值不作为有效测量。温湿度实体的 `measurement_status` 属性说明原因；PM2.5另有测量状态实体。KI-PX100 的湿度低量程标记为24，表示不高于量程下限，不能当作准确的24%读数。
+
+设备能力和耗材配置每小时刷新。型号未提供的字段不会作为真实测量使用，例如KI-PX100没有CO2和粒子计数传感器。
+
+## 已验证型号与兼容性
+
+- KI-PX100（API型号 `KIPX100`）：在实际设备及HA 2026.4.1验证。
+- KI-LS50（API型号 `KILS50`）：历史上游报告支持；本次未对该型号实测。
+
+原温度、湿度、水箱和加湿开关的实体ID及设备标识保留。水箱继续使用 `sensor` 域的 `on`/`off` 枚举，避免破坏现有面板或自动化。
+
+## 上游改动
+
+已比较直接上游 [yuyuvn/cocoro-air](https://github.com/yuyuvn/cocoro-air) 和原始项目 [hldh214/cocoro-air](https://github.com/hldh214/cocoro-air) 的主分支。此次择取原项目的控制命令、按型号筛选模式、云端业务错误检查和停止/量程处理，适配设备自动发现及重新配置流程。
+
+没有整体替换本分支的配置存储和实体结构；通知、宠物管理、电价、天气、历史查询等云功能暂未引入。具体差异和取舍见 [上游比较记录](docs/upstream-review-2026-10-14.md)。
+
+## 开发验证
+
+安装 `httpx` 后运行：
 
 ```sh
 python -m unittest discover -s tests -v
 python -m compileall -q custom_components
 ```
+
+协议和命令测试不需要连接真实设备。实际控制验证使用短暂模式切换并恢复原模式；耗材复位、宠物资料、电价和通知设置不属于自动验证动作。
+
+配置流程的7项测试需要Home Assistant运行环境；仅安装httpx时会跳过。本次在实际HA 2026.4.1环境中运行了全部32项测试。

@@ -11,7 +11,7 @@ from homeassistant.helpers.httpx_client import create_async_httpx_client
 from .api import CocoroAir, CocoroAirAuthError, CocoroAirConnectionError, USER_AGENT
 
 DOMAIN = "cocoro_air"
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR, Platform.FAN, Platform.SELECT]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
