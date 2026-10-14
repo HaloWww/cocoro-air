@@ -1,0 +1,137 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cocoro Air",
+        "description": "输入COCORO AIR账户和设备信息。如夏普要求账户确认或同意条款，请先在夏普网站完成。",
+        "data": {
+          "email": "邮箱",
+          "password": "密码",
+          "device_id": "设备ID",
+          "model_name": "型号"
+        }
+      },
+      "reauth_confirm": {
+        "title": "重新连接Cocoro Air",
+        "description": "请先登录https://cocoroplusapp.jp.sharp/air并完成账户确认，再输入账户信息。",
+        "data": {
+          "email": "邮箱",
+          "password": "密码"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "认证失败，请检查账户信息并在夏普网站完成账户或条款确认。",
+      "cannot_connect": "无法连接夏普云端或设备，请检查网络和设备ID。"
+    },
+    "abort": {
+      "already_configured": "设备已经配置。",
+      "reauth_successful": "重新认证成功。"
+    }
+  },
+  "entity": {
+    "sensor": {
+      "fan_speed": {
+        "name": "风量档位",
+        "state": {
+          "auto": "自动",
+          "level_1": "1档",
+          "level_2": "2档",
+          "level_3": "3档",
+          "level_4": "4档",
+          "level_5": "5档",
+          "level_6": "6档",
+          "level_7": "7档",
+          "level_8": "8档"
+        }
+      },
+      "operation_mode": {
+        "name": "运行模式",
+        "state": {
+          "off": "停止",
+          "settings": "设置",
+          "humidifier_cleaning": "加湿内部清洁",
+          "cleaning_while_stopped": "停机自动清洁",
+          "error_stop": "故障停机",
+          "auto": "自动",
+          "sleep": "睡眠",
+          "pollen": "花粉",
+          "quiet": "静音",
+          "medium": "中档",
+          "strong": "强档",
+          "odor_patrol": "气味巡检",
+          "turbo": "强力",
+          "weak": "弱档",
+          "rapid": "快速",
+          "automatic_cleaning": "自动清洁",
+          "ai_auto": "AI自动",
+          "splash_particle": "飞沫粒子",
+          "powerful_cleaning": "强力吸尘",
+          "powerful_shot": "强力定点",
+          "cleaning_assist": "清洁辅助",
+          "demo": "演示",
+          "special": "特殊",
+          "ai_purifier_cooperation": "AI净化联动",
+          "ai_circulation_cooperation": "AI循环联动",
+          "ai_custom": "AI自定义",
+          "ai_dog_a": "AI犬类模式A",
+          "ai_dog_b": "AI犬类模式B",
+          "ai_cat_a": "AI猫类模式A",
+          "ai_cat_b": "AI猫类模式B",
+          "ai_humidification": "AI加湿"
+        }
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm25_status": {
+        "name": "PM2.5测量状态",
+        "state": {
+          "measured": "测量正常",
+          "measuring": "测量中",
+          "below_range": "低于测量范围",
+          "above_range": "高于测量范围",
+          "not_measuring": "停止测量"
+        }
+      },
+      "odor_level": {
+        "name": "气味等级"
+      },
+      "dust_level": {
+        "name": "灰尘等级"
+      },
+      "air_quality_level": {
+        "name": "空气污染等级"
+      },
+      "operating_time": {
+        "name": "累计运行时长"
+      },
+      "dust_filter_remaining": {
+        "name": "集尘滤网剩余"
+      },
+      "deodorizing_filter_remaining": {
+        "name": "除臭滤网剩余"
+      },
+      "humidifier_filter_remaining": {
+        "name": "加湿滤网剩余"
+      },
+      "ag_ion_cartridge_remaining": {
+        "name": "Ag离子滤芯剩余"
+      },
+      "pci_unit_remaining": {
+        "name": "离子发生器剩余"
+      }
+    },
+    "binary_sensor": {
+      "running": {
+        "name": "运行状态"
+      },
+      "humidifier_filter_maintenance": {
+        "name": "加湿滤网需清洁"
+      },
+      "dustbox_maintenance": {
+        "name": "集尘盒需清洁"
+      }
+    }
+  }
+}

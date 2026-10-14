@@ -4,16 +4,24 @@ https://cocoroplusapp.jp.sharp/air
 
 ## Supported features
 
-- [ ] Air Cleaner
+- [x] Air Cleaner
     - [x] Temperature Sensor
     - [x] Humidity Sensor
     - [x] Humidifier Mode
-    - [ ] Filter Remaining Sensor
-    - [ ] ~Power~
-    - [ ] ~Fan Speed~
-    - [ ] ~Air Quality Sensor~
+    - [x] Fan speed setting (auto or ECHONET levels 1–8, read-only)
+    - [x] Operation mode and running status (read-only)
+    - [x] PM2.5 concentration and measurement status
+    - [x] Odor, dust and air pollution levels
+    - [x] Estimated remaining life of dust, deodorizing and humidifier filters, Ag cartridge and PCI unit
+    - [x] Operating hours, humidifier filter and dust box maintenance flags
 
-Note: You can use [echonetlite](https://github.com/scottyphillips/echonetlite_homeassistant) for Power, Air quality and Fan speed control. Thus this plugin won't support it unless someone contribute to the project.
+You can use [echonetlite](https://github.com/scottyphillips/echonetlite_homeassistant) for additional controls. The humidity switch remains this integration's only control; new entities report information without changing the device.
+
+Extra readings are decoded using Sharp's published [COCORO AIR Web application](https://cocoroplusapp.jp.sharp/air). They are enabled according to the device's reported capabilities. Version 1.0.2 was verified on KI-PX100; other models may expose fewer fields.
+
+The fan sensor reports the configured ECHONET airflow level, not measured RPM or air velocity. A level does not imply a percentage or a specific physical flow rate. Odor (0–3), dust (0–4) and air pollution (0–4) are Sharp's ordinal levels, where 0 is cleanest; they are not standard AQI values.
+
+PM2.5 uses the low 10 bits of `k1.s7`; its measuring flag and out-of-range values are reported by a separate status sensor rather than as valid numeric concentrations. Filter percentages use the model lifetime, current usage, and account supplies multiplier, matching the vendor's calculation. Capability and supplies metadata refreshes hourly. No CO2 or particle-count entity is created for KI-PX100 because its specification reports those sensors as absent.
 
 ## Installation
 
@@ -31,6 +39,7 @@ https://hacs.xyz/docs/faq/custom_repositories
 ## Model supported
 Model that I have tested:
 - KILS50
+- KIPX100 (live validation of extra readings)
 
 ## Authentication and recovery
 

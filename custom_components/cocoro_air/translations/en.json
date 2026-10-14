@@ -1,0 +1,137 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Cocoro Air",
+        "description": "Enter the existing COCORO AIR account and device details. If Sharp requests account confirmation or new terms, complete that step on its website first.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "device_id": "Device ID",
+          "model_name": "Model name"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reconnect to Cocoro Air",
+        "description": "Sign in to https://cocoroplusapp.jp.sharp/air and complete any account or terms confirmation first, then confirm your credentials here.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Authentication failed. Check the credentials and complete any account or terms confirmation on the COCORO AIR website.",
+      "cannot_connect": "Cannot reach COCORO AIR or this device. Check connectivity and the device ID."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "reauth_successful": "Reauthentication successful."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "fan_speed": {
+        "name": "Fan speed setting",
+        "state": {
+          "auto": "Auto",
+          "level_1": "Level 1",
+          "level_2": "Level 2",
+          "level_3": "Level 3",
+          "level_4": "Level 4",
+          "level_5": "Level 5",
+          "level_6": "Level 6",
+          "level_7": "Level 7",
+          "level_8": "Level 8"
+        }
+      },
+      "operation_mode": {
+        "name": "Operation mode",
+        "state": {
+          "off": "Off",
+          "settings": "Settings",
+          "humidifier_cleaning": "Humidifier cleaning",
+          "cleaning_while_stopped": "Cleaning while stopped",
+          "error_stop": "Error stop",
+          "auto": "Auto",
+          "sleep": "Sleep",
+          "pollen": "Pollen",
+          "quiet": "Quiet",
+          "medium": "Medium",
+          "strong": "Strong",
+          "odor_patrol": "Odor patrol",
+          "turbo": "Turbo",
+          "weak": "Weak",
+          "rapid": "Rapid",
+          "automatic_cleaning": "Automatic cleaning",
+          "ai_auto": "Ai auto",
+          "splash_particle": "Splash particle",
+          "powerful_cleaning": "Powerful cleaning",
+          "powerful_shot": "Powerful shot",
+          "cleaning_assist": "Cleaning assist",
+          "demo": "Demo",
+          "special": "Special",
+          "ai_purifier_cooperation": "Ai purifier cooperation",
+          "ai_circulation_cooperation": "Ai circulation cooperation",
+          "ai_custom": "Ai custom",
+          "ai_dog_a": "Ai dog a",
+          "ai_dog_b": "Ai dog b",
+          "ai_cat_a": "Ai cat a",
+          "ai_cat_b": "Ai cat b",
+          "ai_humidification": "Ai humidification"
+        }
+      },
+      "pm25": {
+        "name": "PM2.5"
+      },
+      "pm25_status": {
+        "name": "PM2.5 measurement status",
+        "state": {
+          "measured": "Measured",
+          "measuring": "Measuring",
+          "below_range": "Below range",
+          "above_range": "Above range",
+          "not_measuring": "Not measuring"
+        }
+      },
+      "odor_level": {
+        "name": "Odor level"
+      },
+      "dust_level": {
+        "name": "Dust level"
+      },
+      "air_quality_level": {
+        "name": "Air quality level"
+      },
+      "operating_time": {
+        "name": "Operating time"
+      },
+      "dust_filter_remaining": {
+        "name": "Dust filter remaining"
+      },
+      "deodorizing_filter_remaining": {
+        "name": "Deodorizing filter remaining"
+      },
+      "humidifier_filter_remaining": {
+        "name": "Humidifier filter remaining"
+      },
+      "ag_ion_cartridge_remaining": {
+        "name": "Ag ion cartridge remaining"
+      },
+      "pci_unit_remaining": {
+        "name": "PCI unit remaining"
+      }
+    },
+    "binary_sensor": {
+      "running": {
+        "name": "Running"
+      },
+      "humidifier_filter_maintenance": {
+        "name": "Humidifier filter maintenance"
+      },
+      "dustbox_maintenance": {
+        "name": "Dust box maintenance"
+      }
+    }
+  }
+}

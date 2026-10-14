@@ -11,7 +11,7 @@ from homeassistant.helpers.httpx_client import create_async_httpx_client
 from .api import CocoroAir, CocoroAirAuthError, CocoroAirConnectionError, USER_AGENT
 
 DOMAIN = "cocoro_air"
-PLATFORMS = [Platform.SENSOR, Platform.SWITCH]
+PLATFORMS = [Platform.SENSOR, Platform.SWITCH, Platform.BINARY_SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -19,10 +19,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     client = create_async_httpx_client(hass, timeout=30, headers={"User-Agent": USER_AGENT})
     api = CocoroAir(client, entry.data["email"], entry.data["password"],
                     entry.data["device_id"], entry.data["model_name"])
-    api.device_info = DeviceInfo(identifiers={(DOMAIN, api.device_id)},
-                                name=f"Cocoro Air {api.model_name}", manufacturer="Sharp", model=api.model_name)
     try:
         await api.login()
+        await api.async_load_metadata()
         await api.update()
     except CocoroAirAuthError as err:
         await httpx.AsyncClient.aclose(client)
@@ -30,6 +29,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except (httpx.HTTPError, CocoroAirConnectionError) as err:
         await httpx.AsyncClient.aclose(client)
         raise ConfigEntryNotReady(f"Could not connect to Cocoro Air: {err}") from err
+    api.device_info = DeviceInfo(identifiers={(DOMAIN, api.device_id)},
+                                name=f"Cocoro Air {api.model_name}", manufacturer="Sharp", model=api.model_name,
+                                sw_version=api.firmware_version)
     hass.data[DOMAIN][entry.entry_id] = {"cocoro_air_api": api}
     try:
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
